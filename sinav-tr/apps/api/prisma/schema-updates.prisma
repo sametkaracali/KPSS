@@ -1,0 +1,206 @@
+// Additional models to add to existing schema.prisma
+
+model ExamSession {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  examId       String
+  exam         Exam     @relation(fields: [examId], references: [id])
+  status       String   @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, PAUSED, SUBMITTED, EXPIRED
+  startTime    DateTime @default(now())
+  endTime      DateTime?
+  pausedAt     DateTime?
+  autoSubmitted Boolean @default(false)
+  answers      ExamAnswer[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([examId])
+  @@index([status])
+}
+
+model LearningSession {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  topicId           String
+  topic             Topic    @relation(fields: [topicId], references: [id])
+  questionsAttempted Int
+  correctAnswers    Int
+  timeSpent         Int      // in seconds
+  successRate       Float
+  completedVideos   String[]
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([topicId])
+  @@index([createdAt])
+}
+
+model TopicMastery {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  topicId      String
+  topic        Topic    @relation(fields: [topicId], references: [id])
+  masteryLevel Float    // 0-100
+  lastPracticed DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, topicId])
+  @@index([userId])
+  @@index([masteryLevel])
+}
+
+model Achievement {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  icon        String?
+  points      Int      @default(10)
+  category    String   // LEARNING, EXAM, SOCIAL, SPECIAL
+  requirement Json     // JSON object with achievement requirements
+  createdAt   DateTime @default(now())
+
+  users UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  unlockedAt    DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String   // EXAM_START, EXAM_END, ACHIEVEMENT, MESSAGE, SYSTEM, PAYMENT
+  title     String
+  message   String
+  data      Json?
+  priority  String   @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  read      Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String
+  userId     String
+  data       Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model PageView {
+  id        String   @id @default(cuid())
+  userId    String?
+  page      String
+  referrer  String?
+  userAgent String?
+  ipAddress String?
+  timestamp DateTime @default(now())
+
+  @@index([userId])
+  @@index([page])
+  @@index([timestamp])
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  subject   String
+  body      String   @db.Text
+  variables String[] // List of variable names used in template
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PushSubscription {
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  endpoint String   @unique
+  keys     Json     // p256dh and auth keys
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Update existing models with missing fields
+model User {
+  // Add these fields to existing User model
+  lastSeen      DateTime?
+  bannedUntil   DateTime?
+  banReason     String?
+  deletedAt     DateTime?
+  twoFactorSecret String?
+  twoFactorEnabled Boolean @default(false)
+  
+  // Add these relations
+  examSessions    ExamSession[]
+  learningSessions LearningSession[]
+  topicMasteries  TopicMastery[]
+  achievements    UserAchievement[]
+  notifications   Notification[]
+  pushSubscriptions PushSubscription[]
+}
+
+model Question {
+  // Add these fields to existing Question model
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  approvedAt      DateTime?
+  rejectionReason String?
+  views           Int      @default(0)
+  likes           Int      @default(0)
+  reports         Int      @default(0)
+  
+  @@index([status])
+}
+
+model Topic {
+  // Add these relations to existing Topic model
+  learningSessions LearningSession[]
+  topicMasteries   TopicMastery[]
+  prerequisites    Topic[]  @relation("TopicPrerequisites")
+  prerequisiteFor  Topic[]  @relation("TopicPrerequisites")
+}
+
+model ExamAnswer {
+  // Add these fields to existing ExamAnswer model
+  sessionId      String?
+  session        ExamSession? @relation(fields: [sessionId], references: [id])
+  selectedOption Int
+  timeSpent      Int?         // in seconds
+  flagged        Boolean      @default(false)
+  isCorrect      Boolean      @default(false)
+  
+  @@index([sessionId])
+}

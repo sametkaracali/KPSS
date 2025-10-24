@@ -1,0 +1,357 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum ExamType {
+  YKS_TYT
+  YKS_AYT
+  KPSS
+}
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String
+  password  String
+  role      UserRole   @default(STUDENT)
+  avatar    String?
+  bio       String?
+  verified  Boolean    @default(false)
+  lastSeen  DateTime?
+  bannedUntil DateTime?
+  banReason   String?
+  deletedAt   DateTime?
+  twoFactorSecret String?
+  twoFactorEnabled Boolean @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  exams         ExamResult[]
+  questions     Question[]
+  subscriptions Subscription[]
+  payments      Payment[]
+  examSessions  ExamSession[]
+  learningSessions LearningSession[]
+  topicMasteries TopicMastery[]
+  achievements  UserAchievement[]
+  notifications Notification[]
+  pushSubscriptions PushSubscription[]
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  examType  ExamType
+  createdAt DateTime @default(now())
+
+  topics    Topic[]
+  questions Question[]
+}
+
+model Topic {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  questions Question[]
+  learningSessions LearningSession[]
+  topicMasteries TopicMastery[]
+
+  @@unique([subjectId, slug])
+}
+
+model Question {
+  id           String              @id @default(cuid())
+  text         String
+  explanation  String?
+  difficulty   QuestionDifficulty
+  subjectId    String
+  subject      Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topicId      String
+  topic        Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  createdBy    String
+  creator      User                @relation(fields: [createdBy], references: [id])
+  videoUrl     String?
+  status       String              @default("PENDING")
+  approvedAt   DateTime?
+  rejectionReason String?
+  views        Int                 @default(0)
+  likes        Int                 @default(0)
+  reports      Int                 @default(0)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  options QuestionOption[]
+  answers ExamAnswer[]
+  
+  @@index([status])
+}
+
+model QuestionOption {
+  id         String   @id @default(cuid())
+  text       String
+  isCorrect  Boolean
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, text])
+}
+
+model Exam {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  examType     ExamType
+  duration     Int
+  totalQuestions Int
+  passingScore Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  results ExamResult[]
+  sessions ExamSession[]
+}
+
+model ExamResult {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examId    String
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  score     Float
+  maxScore  Int
+  duration  Int
+  correctAnswers Int
+  totalQuestions Int
+  timeTaken Int
+  startedAt DateTime
+  endedAt   DateTime
+  createdAt DateTime @default(now())
+
+  answers ExamAnswer[]
+
+  @@unique([userId, examId, startedAt])
+}
+
+model ExamAnswer {
+  id           String   @id @default(cuid())
+  questionId   String
+  question     Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  resultId     String
+  result       ExamResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  selectedText String?
+  selectedOption Int
+  isCorrect    Boolean
+  timeSpent    Int
+  flagged      Boolean @default(false)
+  createdAt    DateTime @default(now())
+
+  @@unique([resultId, questionId])
+  @@index([resultId])
+}
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+  PLUS
+}
+
+model Subscription {
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan      SubscriptionPlan   @default(FREE)
+  planId    String
+  status    String             @default("ACTIVE")
+  startDate DateTime           @default(now())
+  endDate   DateTime?
+  autoRenew Boolean            @default(true)
+  cancelledAt DateTime?
+  active    Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  payments Payment[]
+
+  @@unique([userId])
+}
+
+model Payment {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionId  String?
+  subscription    Subscription? @relation(fields: [subscriptionId], references: [id])
+  amount          Float
+  currency        String       @default("TRY")
+  plan            SubscriptionPlan
+  planId          String
+  status          String       @default("pending")
+  paymentId       String?
+  conversationId  String?
+  paymentDetails  Json?
+  errorMessage    String?
+  refundedAt      DateTime?
+  refundReason    String?
+  paymentMethodId String?
+  transactionId   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ExamSession {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  examId       String
+  exam         Exam     @relation(fields: [examId], references: [id])
+  status       String   @default("NOT_STARTED")
+  startTime    DateTime @default(now())
+  endTime      DateTime?
+  pausedAt     DateTime?
+  autoSubmitted Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([examId])
+  @@index([status])
+}
+
+model LearningSession {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  topicId           String
+  topic             Topic    @relation(fields: [topicId], references: [id])
+  questionsAttempted Int
+  correctAnswers    Int
+  timeSpent         Int
+  successRate       Float
+  completedVideos   String[]
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([topicId])
+  @@index([createdAt])
+}
+
+model TopicMastery {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  topicId      String
+  topic        Topic    @relation(fields: [topicId], references: [id])
+  masteryLevel Float
+  lastPracticed DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, topicId])
+  @@index([userId])
+  @@index([masteryLevel])
+}
+
+model Achievement {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  icon        String?
+  points      Int      @default(10)
+  category    String
+  requirement Json
+  createdAt   DateTime @default(now())
+
+  users UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  unlockedAt    DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  title     String
+  message   String
+  data      Json?
+  priority  String   @default("MEDIUM")
+  read      Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String
+  userId     String
+  data       Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model PageView {
+  id        String   @id @default(cuid())
+  userId    String?
+  page      String
+  referrer  String?
+  userAgent String?
+  ipAddress String?
+  timestamp DateTime @default(now())
+
+  @@index([userId])
+  @@index([page])
+  @@index([timestamp])
+}
+
+model PushSubscription {
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  endpoint String   @unique
+  keys     Json
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
